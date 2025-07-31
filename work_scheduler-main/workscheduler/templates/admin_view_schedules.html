@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Schedules - Work Scheduler</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body class="admin-schedule-view">
+    <!-- Navigation Bar -->
+    {% include 'navbar.html' %}
+    <!-- Main Content -->
+    <div class="content-container">
+        <h1>Schedules for {{ current_week }}</h1>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="flash-message {{ category }}">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <!-- Add at the top of the file, right after the content-container div -->
+        <div id="editShiftModal" class="modal">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <h2>Edit Shift</h2>
+                <form id="editShiftForm" method="POST" action="{{ url_for('update_shift') }}">
+                    <input type="hidden" id="shift_username" name="username">
+                    <input type="hidden" id="shift_date" name="date">
+                    <div class="form-group">
+                        <label for="start_time">Start Time:</label>
+                        <input type="time" id="start_time" name="start_time" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="end_time">End Time:</label>
+                        <input type="time" id="end_time" name="end_time" required>
+                    </div>
+                    <button type="submit" class="schedule-btn">Save Changes</button>
+                </form>
+            </div>
+        </div>
+
+    <!-- Generate Schedules Button -->
+    <form method="POST" class="generate-schedule-form">
+        <div class="days-container">
+            {% for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] %}
+            <div class="day-section">
+                <h3>{{ day }}</h3>
+                <div class="form-group">
+                    <label for="opening_shifts_{{ day|lower }}" class="schedule-label">Opening Shifts:</label>
+                    <input type="number" class="schedule-input" 
+                           id="opening_shifts_{{ day|lower }}" 
+                           name="opening_shifts_{{ day|lower }}" 
+                           value="{{ session.get('opening_shifts_' + day|lower, 1) }}" 
+                           min="0">
+                </div>
+                <div class="form-group">
+                    <label for="midday_shifts_{{ day|lower }}" class="schedule-label">Midday Shifts:</label>
+                    <input type="number" class="schedule-input" 
+                           id="midday_shifts_{{ day|lower }}" 
+                           name="midday_shifts_{{ day|lower }}" 
+                           value="{{ session.get('midday_shifts_' + day|lower, 1) }}" 
+                           min="0">
+                </div>
+                <div class="form-group">
+                    <label for="closing_shifts_{{ day|lower }}" class="schedule-label">Closing Shifts:</label>
+                    <input type="number" class="schedule-input" 
+                           id="closing_shifts_{{ day|lower }}" 
+                           name="closing_shifts_{{ day|lower }}" 
+                           value="{{ session.get('closing_shifts_' + day|lower, 1) }}" 
+                           min="0">
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <div class="form-group">
+            <label for="max_shifts" class="schedule-label">Max Shifts Per Employee:</label>
+            <input type="number" class="schedule-input" id="max_shifts" 
+                   name="max_shifts" value="{{ session.get('max_shifts', 5) }}" min="1" max="7">
+        </div>
+        <button type="submit" name="action" value="generate" 
+                class="schedule-btn">Generate Schedules</button>
+    </form>
+
+    <style>
+    .days-container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 20px;
+        margin-bottom: 20px;
+    }
+
+    .day-section {
+        flex: 1;
+        min-width: 250px;
+        padding: 15px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        background-color: #f9f9f9;
+    }
+
+    .day-section h3 {
+        margin-top: 0;
+        margin-bottom: 15px;
+        color: #333;
+    }
+    </style>
+
+        <!-- Add to both view_schedules.html and admin_view_schedules.html, right before the schedule table -->
+        <div class="week-navigation">
+            <a href="{{ url_for('change_week', direction='previous') }}" class="nav-arrow">&larr; Previous Week</a>
+            <span class="current-week">{{ current_week }}</span>
+            <a href="{{ url_for('change_week', direction='next') }}" class="nav-arrow">Next Week &rarr;</a>
+        </div>
+
+        <!-- Schedules Table -->
+        <div class="admin-schedule-table">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Employee</th>
+                        {% for date in week_dates %}
+                        <th>{{ date.strftime('%a<br>%b %d')|safe }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user, schedule in schedules.items() %}
+                    <tr data-employee="{{ user }}" id="row-{{ user }}" class="{% if user in disabled_employees %}disabled-employee{% endif %}">
+                        <td class="employee-name" onclick="toggleEmployee('{{ user }}')">{{ user }}</td>
+                        {% for date in week_dates %}
+                        <td class="shift-cell" 
+                            ondrop="dropShift(event)" 
+                            ondragover="allowDrop(event)"
+                            data-date="{{ date.strftime('%Y-%m-%d') }}"
+                            data-employee="{{ user }}">
+                            {% if date.strftime('%Y-%m-%d') in schedule %}
+                            <div class="shift-block" 
+                                 draggable="true" 
+                                 ondragstart="dragStart(event)"
+                                 data-shift-id="{{ schedule[date.strftime('%Y-%m-%d')].id }}"
+                                 data-original-employee="{{ user }}"
+                                 data-date="{{ date.strftime('%Y-%m-%d') }}">
+                                {{ schedule[date.strftime('%Y-%m-%d')].start_time|datetimeformat }} -
+                                {{ schedule[date.strftime('%Y-%m-%d')].end_time|datetimeformat }}
+                            </div>
+                            {% else %}
+                            Off
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/schedule.js') }}"></script>
+</body>
+</html>
